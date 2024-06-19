@@ -30,7 +30,7 @@ def analyze_music_folder(folder_path):
         # Filtrer les BPM pour qu'ils soient entre 80 et 160
         while(bpm < 80):
             bpm = bpm*2
-        while(bpm > 160)
+        while(bpm > 160):
             bpm = bpm /2
 
         # Extraire la clé musicale (Key)
