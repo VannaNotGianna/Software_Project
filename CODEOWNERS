@@ -3,12 +3,3 @@
 
 # Assign @vicoescobar as the code owner for all Python files in the src directory
 /app/backend/*.py @vicoescobar
-
-# Assign @vicoescobar as the code owner for all Python files in the tests directory
-/app/frontend/*.py @vicoescobar
-
-# Assign @vicoescobar as the code owner for all Python files at the root level
-/*.py @vicoescobar
-
-# Assign @vicoescobar as the code owner for all other Python files
-*.py @vicoescobar
