@@ -1,20 +1,17 @@
-# Makefile
-
 CC = gcc
-CFLAGS = `pkg-config --cflags gtk+-3.0` -Wall -O3 -fsanitize=address
-LDLIBS = `pkg-config --libs gtk+-3.0` -lSDL2_image -Ineural_network -lSDL2 -lm
+CFLAGS = `pkg-config --cflags gtk+-3.0` -Wall -O3 -fsanitize=address -MMD
+LDLIBS = `pkg-config --libs gtk+-3.0` -lSDL2_image -lSDL2 -lm
+LIB_PATH = -L/path/to/network_library
 
-SRC = music-player.c 
+
+SRC = music-player.c src/play.c
 OBJ = ${SRC:.c=.o}
 DEP = ${SRC:.c=.d}
 
 music-player: ${OBJ}
-	${CC} ${CFLAGS} ${OBJ} -o $@ ${LDLIBS}
+	${CC} ${CFLAGS} ${OBJ} -o $@ ${LDLIBS} ${LIB_PATH} ${LIBS}
 
-neural_network/OCR.o: neural_network/OCR.c
-	${CC} ${CFLAGS} -c -o $@ $<
-
-sudoku_solver/solver.o: sudoku_solver/solver.c
+%.o: %.c
 	${CC} ${CFLAGS} -c -o $@ $<
 
 -include ${DEP}
@@ -22,9 +19,4 @@ sudoku_solver/solver.o: sudoku_solver/solver.c
 .PHONY: clean
 
 clean:
-	${RM} ${OBJ}
-	${RM} ${DEP}
-	${RM} music-player
-
-# END
-
+	${RM} ${OBJ} ${DEP} music-player

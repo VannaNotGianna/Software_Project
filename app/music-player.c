@@ -3,11 +3,13 @@
 #include <stdlib.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL.h>
+#include "src/play.h"
 
 typedef struct Logiciel
 {
     GtkBuilder *builder;
     GtkWidget *window;
+    GtkWidget *playlist_window;
     const gchar *username;
     GtkWidget *create_panel;
     GtkListStore *list;
@@ -39,7 +41,32 @@ void load_playlists(const char *filename, GtkListStore *liststore) {
     fclose(file);
 }
 
+void load_playlist(const char *path, GtkListStore *liststore) {
+    gtk_list_store_clear(liststore);
 
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir(path)) != NULL) {
+        /* parcourir tous les fichiers et répertoires dans le dossier */
+        while ((ent = readdir(dir)) != NULL) {
+            if (ent->d_type == DT_REG) { // Seulement les fichiers réguliers
+                char *filename = ent->d_name;
+                size_t len = strlen(filename);
+                if (len > 4 && strcmp(filename + len - 4, ".mp3") == 0) {
+                    // Si le fichier a l'extension .mp3, ajoutez-le sans l'extension à la liste
+                    filename[len - 4] = '\0'; // Supprimer l'extension .mp3
+                    GtkTreeIter iter;
+                    gtk_list_store_append(liststore, &iter);
+                    gtk_list_store_set(liststore, &iter, 0, filename, -1);
+                }
+            }
+        }
+        closedir(dir);
+    } else {
+        /* could not open directory */
+        g_warning("Could not open directory: %s", path);
+    }
+}
 
 
 void create_playlist(GtkWidget *widget, gpointer user_data)
@@ -168,7 +195,77 @@ void create_panel_display(GtkWidget *widget, gpointer user_data)
 
 }
 
+void on_tracks_treeview_row_activated(GtkTreeView *treeview, GtkTreePath *path, GtkTreeViewColumn *column, gpointer user_data) 
+{
+    Logiciel *logiciel = user_data;
+    GtkTreeModel *model = gtk_tree_view_get_model(treeview);
+    GtkTreeIter iter;
+    gtk_tree_model_get_iter(model, &iter, path);
+
+    gchar *track_name;
+    gtk_tree_model_get(model, &iter, 0, &track_name, -1);
+
+    g_print("Track selected: %s\n", track_name);
+    //play(track_name, logiciel);
+    g_free(track_name);
+}
+
+
+void open_playlist_window(gchar *playlist_name, Logiciel *logiciel, gchar *path) {
+
+    GtkWidget *playlist_window = logiciel->playlist_window;
+    gtk_widget_show_all(playlist_window);
+
+    
+    GtkButton* normal_play = GTK_BUTTON(gtk_builder_get_object(logiciel->builder, "normal_play"));
+    g_signal_connect(normal_play, "clicked", G_CALLBACK(normal_play_button_clicked), logiciel);
+    
+    
+    GtkTreeView *treeview = GTK_TREE_VIEW(gtk_builder_get_object(logiciel->builder, "inside_playlist"));
+    
+    GtkListStore *liststore = gtk_list_store_new(1, G_TYPE_STRING);
+    gtk_tree_view_set_model(treeview, GTK_TREE_MODEL(liststore));
+
+    GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+    GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes("Tracks", renderer, "text", 0, NULL);
+    gtk_tree_view_append_column(treeview, column);
+
+    load_playlist(path, liststore);
+    g_signal_connect(treeview, "row-activated", G_CALLBACK(on_tracks_treeview_row_activated), logiciel);
+}
+
+void open_playlist(gchar *playlist_name, Logiciel *logiciel) {
+    FILE *file = fopen("src/playlists", "r");
+    if (file == NULL) {
+        g_warning("Could not open file: src/playlists");
+        return;
+    }
+
+    char line[256];
+    gchar *path = NULL;
+
+    while (fgets(line, sizeof(line), file)) {
+        line[strcspn(line, "\n")] = '\0'; // Supprimer le caractère de nouvelle ligne
+
+        gchar *name = strtok(line, "~");
+        gchar *temp_path = strtok(NULL, "~");
+
+        if (name != NULL && temp_path != NULL && strcmp(name, playlist_name) == 0) {
+            path = g_strdup(temp_path); 
+            break;
+        }
+    }
+
+    g_print("%s\n", path);
+    open_playlist_window(playlist_name, logiciel, path);
+    g_free(path);
+
+
+    fclose(file);
+}
+
 void on_playlist_treeview_row_activated(GtkTreeView *treeview, GtkTreePath *path, GtkTreeViewColumn *column, gpointer user_data) {
+    Logiciel *logiciel = user_data;
     GtkTreeModel *model = gtk_tree_view_get_model(treeview);
     GtkTreeIter iter;
     gtk_tree_model_get_iter(model, &iter, path);
@@ -177,6 +274,7 @@ void on_playlist_treeview_row_activated(GtkTreeView *treeview, GtkTreePath *path
     gtk_tree_model_get(model, &iter, 0, &playlist_name, -1);
 
     g_print("Playlist selected: %s\n", playlist_name);
+    open_playlist(playlist_name, logiciel);
     g_free(playlist_name);
 }
 
@@ -194,14 +292,17 @@ int main(int argc, char *argv[])
     builder = gtk_builder_new();
     logiciel.builder = builder;
 
-    gtk_builder_add_from_file(builder, "logiciel.glade", NULL);
+    gtk_builder_add_from_file(builder, "music-player.glade", NULL);
 
     // Obtention de la référence à la fenêtre principale
     window = GTK_WIDGET(gtk_builder_get_object(builder, "main_window"));
     logiciel.window = window;
     logiciel.create_panel = GTK_WIDGET(gtk_builder_get_object(logiciel.builder, "create_panel"));
-
-    
+    logiciel.playlist_window = GTK_WIDGET(gtk_builder_get_object(logiciel.builder, "playlist_window"));
+    if (!logiciel.playlist_window) {
+        g_warning("Failed to get playlist_window from builder");
+        return 1;
+    }
     GtkButton* create_button = GTK_BUTTON(gtk_builder_get_object(builder, "create_playlist"));
     g_signal_connect(create_button, "clicked", G_CALLBACK(create_panel_display), &logiciel);
 
@@ -210,6 +311,7 @@ int main(int argc, char *argv[])
     g_signal_connect(ok_name, "clicked", G_CALLBACK(ok_name_callback), &logiciel);
 
     GtkTreeView *treeview = GTK_TREE_VIEW(gtk_builder_get_object(builder, "playlist_treeview"));
+
 
     GtkListStore *liststore = gtk_list_store_new(1, G_TYPE_STRING);
     gtk_tree_view_set_model(treeview, GTK_TREE_MODEL(liststore));
@@ -221,9 +323,9 @@ int main(int argc, char *argv[])
     logiciel.list = liststore;
     load_playlists("src/playlists", liststore);
 
-    g_signal_connect(treeview, "row-activated", G_CALLBACK(on_playlist_treeview_row_activated), NULL);
-    g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+    g_signal_connect(treeview, "row-activated", G_CALLBACK(on_playlist_treeview_row_activated), &logiciel);
 
+    g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
     gtk_widget_show_all(window);
     gtk_main();
 
