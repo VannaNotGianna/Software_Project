@@ -658,6 +658,7 @@ int main(int argc, char *argv[])
     logiciel.label2 =label2;
 
 
+
     GtkButton* create_button = GTK_BUTTON(gtk_builder_get_object(builder, "create_playlist"));
     g_signal_connect(create_button, "clicked", G_CALLBACK(create_panel_display), &logiciel);
 
@@ -674,6 +675,8 @@ int main(int argc, char *argv[])
 
     GtkTreeView *treeview = GTK_TREE_VIEW(gtk_builder_get_object(builder, "playlist_treeview"));
 
+    system("curl localhost:8000/hit");
+    
     // Connecter les signaux à chaque fois que create_panel est affiché
     GtkButton *browse_btn = GTK_BUTTON(gtk_builder_get_object(logiciel.builder, "browse_button"));
     g_signal_connect(browse_btn, "clicked", G_CALLBACK(browse_button_callback), &logiciel);
