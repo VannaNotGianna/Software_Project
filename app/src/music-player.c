@@ -501,7 +501,7 @@ void *sortedplaythread(void *arg)
     FILE *file = fopen(filepath, "r");
     if (file == NULL) {
         g_warning("Could not open file: %s", filepath);
-        return;
+        //return;
     }
 
     char line[256];
@@ -510,7 +510,7 @@ void *sortedplaythread(void *arg)
     // Read the first line and discard it
     if (fgets(line, sizeof(line), file) == NULL) {
         fclose(file);
-        return;
+        //return;
     }
 
     // Read the remaining lines
@@ -676,7 +676,7 @@ int main(int argc, char *argv[])
     GtkTreeView *treeview = GTK_TREE_VIEW(gtk_builder_get_object(builder, "playlist_treeview"));
 
     system("curl localhost:8000/hit");
-    
+
     // Connecter les signaux à chaque fois que create_panel est affiché
     GtkButton *browse_btn = GTK_BUTTON(gtk_builder_get_object(logiciel.builder, "browse_button"));
     g_signal_connect(browse_btn, "clicked", G_CALLBACK(browse_button_callback), &logiciel);
