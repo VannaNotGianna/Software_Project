@@ -1,49 +1,35 @@
+import signal
+import sys
 import pygame
-from pydub import AudioSegment
-import os
-import re
-from tqdm import tqdm
-import essentia
-import essentia.standard as es
-import argparse
 
+# Initialisation de pygame
+pygame.mixer.init()
 
-def play_audio_with_speed(file_path, speed=1.0):
-    # Charger le fichier audio
-    #audio = AudioSegment.from_file(file_path)
+# Fonction pour gérer l'interruption du signal
+def signal_handler(sig, frame):
+    pygame.mixer.music.stop()
+    pygame.mixer.quit()
+    sys.exit(0)
 
-    # Appliquer le coefficient de vitesse
-    #new_audio = audio.speedup(playback_speed=speed)
+# Enregistrement du signal pour gérer la fermeture propre
+signal.signal(signal.SIGTERM, signal_handler)
 
-    # Exporter l'audio modifié en format wav temporaire
-    #temp_file = "temp_audio.wav"
-    #new_audio.export(temp_file, format="wav")
-
-    # Initialiser pygame
-    pygame.mixer.init()
-
-    # Charger l'audio modifié avec pygame
-    pygame.mixer.music.load(file_path)
-
-    # Jouer l'audio
-    pygame.mixer.music.play()
-
-    # Attendre que la musique se termine
-    while pygame.mixer.music.get_busy():
-        pygame.time.Clock().tick(10)
-
-    # Supprimer le fichier temporaire
-    os.remove(temp_file)
-
+def play_song(playlist_path, track_name):
+    try:
+        file_path = f"{playlist_path}/{track_name}.mp3"
+        pygame.mixer.music.load(file_path)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)  # Petit délai pour éviter de consommer trop de CPU
+    except Exception as e:
+        print(f"Error playing {file_path}: {e}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Exécute la fonction test avec un nombre donné.")
-    parser.add_argument("nbr", type=str, help="Le nombre à doubler et écrire dans le fichier.")
-    args = parser.parse_args()
+    if len(sys.argv) != 3:
+        print("Usage: python3 playsong.py <playlist_path> <track_name>")
+        sys.exit(1)
 
-    play_audio_with_speed(args.nbr)
+    playlist_path = sys.argv[1]
+    track_name = sys.argv[2]
 
-# Exemple d'utilisation
-#file_path = "src/musictest/Belly Dancer.mp3"  # Remplacez par le chemin de votre fichier audio
-#speed = 1.5  # Coefficient de vitesse (1.0 pour vitesse normale)
-#play_audio_with_speed(file_path, speed)
+    play_song(playlist_path, track_name)

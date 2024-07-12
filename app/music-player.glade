@@ -454,7 +454,7 @@
               </packing>
             </child>
             <child>
-              <object class="GtkButton">
+              <object class="GtkButton" id="sortedplay">
                 <property name="label" translatable="yes">Sorted play</property>
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>

@@ -6,7 +6,20 @@
 #include "play.h"
 #include <unistd.h>
 #include <sys/wait.h>
+#include <stdbool.h>
+#include <time.h>
 
+
+
+typedef struct Play_song
+{
+    gchar *track_name;
+    gchar *playlist_path;
+    pthread_t thread_id;
+    pid_t child_pid;
+    bool should_terminate;
+    pthread_mutex_t mutex;
+} Play_song;
 
 
 typedef struct Logiciel
@@ -18,20 +31,47 @@ typedef struct Logiciel
     GtkWidget *create_panel;
     GtkListStore *list;
     GtkListStore *tracks;
-    const gchar *playlist_name;
+    gchar *playlist_name;
     gchar *playlist_path;
     GtkLabel *label2;
+    int test;
+    Play_song *playcurrent;
 } Logiciel;
 
-typedef struct Play_song
-{
-    gchar *track_name;
-    gchar *playlist_path;
-} Play_song;
 
+
+void terminate_audio_process(pid_t pid) {
+    if (pid > 0) {
+        kill(pid, SIGTERM);
+        waitpid(pid, NULL, 0);
+    }
+}
+
+
+void on_window_close(GtkWidget *widget, gpointer user_data) {
+    Logiciel *logiciel = user_data;
+    // Terminer le processus de lecture audio en cours avant de fermer GTK
+    if (logiciel->playcurrent != NULL && logiciel->playcurrent->child_pid > 0) {
+        terminate_audio_process(logiciel->playcurrent->child_pid);
+        //g_free(logiciel->playcurrent->track_name);
+        //g_free(logiciel->playcurrent->playlist_path);
+        //g_free(logiciel->playcurrent);
+        logiciel->playcurrent = NULL;
+    }
+    gtk_main_quit();
+}
 
 gboolean on_window_delete_event(GtkWidget *widget, GdkEvent *event, gpointer user_data) {
     gtk_widget_hide(widget);
+    Logiciel *logiciel = user_data;
+    // Terminer le processus de lecture audio en cours avant de fermer GTK
+    if (logiciel->playcurrent != NULL && logiciel->playcurrent->child_pid > 0) {
+        terminate_audio_process(logiciel->playcurrent->child_pid);
+        //g_free(logiciel->playcurrent->track_name);
+        //g_free(logiciel->playcurrent->playlist_path);
+        //g_free(logiciel->playcurrent);
+        logiciel->playcurrent = NULL;
+    }
     return TRUE; // Empêche la destruction de la fenêtre
 }
 
@@ -275,52 +315,74 @@ void create_panel_display(GtkWidget *widget, gpointer user_data)
     gtk_widget_show_all(create_panel);
 }
 
+
+
+
+
 void *play_thread(void *arg)
 {
     Play_song *playsong = (Play_song *)arg;
-    gchar command[512];
-    snprintf(command, sizeof(command), "python3 src/playsong.py \"%s\"/\"%s\".mp3", playsong->playlist_path, playsong->track_name);
-    
-    // Ouvrir un flux de fichier pour capturer la sortie du script Python
-    FILE *pipe = popen(command, "r");
-    if (pipe == NULL) {
-        g_warning("Failed to open pipe to Python script.");
+    pid_t pid = fork();
+
+    if (pid == 0) {
+        gchar command[512];
+        snprintf(command, sizeof(command), "python3 src/playsong.py \"%s\" \"%s\"", playsong->playlist_path, playsong->track_name);
+        
+        // Exécuter le script Python
+        execlp("python3", "python3", "src/playsong.py", playsong->playlist_path, playsong->track_name, NULL);
+        exit(0);
+    } else if (pid > 0) {
+        // Processus parent
+        playsong->child_pid = pid;
+        while (!playsong->should_terminate) {
+            // Simulate doing some work
+            usleep(100000); // Pause de 100ms pour éviter de surcharger le CPU
+        }
+        printf("Terminating the child process...\n");
+        terminate_audio_process(playsong->child_pid);
+    } else {
+        // Erreur lors de la création du processus
+        perror("fork");
         return NULL;
     }
-    
-    // Lire et traiter la sortie ligne par ligne si nécessaire
-    char buffer[128];
-    while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
-        // Traiter ou ignorer la sortie selon vos besoins
-        printf("Python output: %s", buffer); // Exemple d'affichage dans la console C
-    }
-    
-    // Fermer le flux de fichier
-    pclose(pipe);
-    
-    // Libérer la mémoire allouée dynamiquement
-    g_free(playsong->track_name);
-    g_free(playsong->playlist_path);
-    g_free(playsong);
 
+    printf("Thread is terminating...\n");
     return NULL;
 }
 
 
-void playsong(gchar *playlist_path, gchar *track_name)
+
+
+
+
+void playsong(gchar *playlist_path, gchar *track_name, Logiciel *logiciel)
 {
+
+    // Terminer la lecture audio en cours s'il y en a une
+    if (logiciel->playcurrent != NULL && logiciel->playcurrent->child_pid > 0) {
+        terminate_audio_process(logiciel->playcurrent->child_pid);
+        //g_free(logiciel->playcurrent);
+        logiciel->playcurrent = NULL;
+    }
+
+    // Démarrer la nouvelle lecture audio
     Play_song *playsong = g_malloc(sizeof(Play_song));
     playsong->track_name = g_strdup(track_name);
     playsong->playlist_path = g_strdup(playlist_path);
+    playsong->should_terminate = false;
+    logiciel->playcurrent = playsong;
+
     pthread_t thread_id;
     pthread_create(&thread_id, NULL, play_thread, playsong);
     pthread_detach(thread_id); // Détache le thread pour éviter les fuites de mémoire
 }
 
 
+
 void on_tracks_treeview_row_activated(GtkTreeView *treeview, GtkTreePath *path, GtkTreeViewColumn *column, gpointer user_data) 
 {
     Logiciel *logiciel = user_data;
+
     GtkTreeModel *model = gtk_tree_view_get_model(treeview);
     GtkTreeIter iter;
     gtk_tree_model_get_iter(model, &iter, path);
@@ -351,8 +413,7 @@ void on_tracks_treeview_row_activated(GtkTreeView *treeview, GtkTreePath *path, 
     fclose(file);
 
     if (playlist_path != NULL) {
-        playsong(playlist_path, track_name);
-        g_print("Track selected: %s\n", track_name);
+        playsong(playlist_path, track_name, logiciel);
         g_free(playlist_path);
     } else {
         g_warning("Playlist path not found for %s", logiciel->playlist_name);
@@ -360,7 +421,6 @@ void on_tracks_treeview_row_activated(GtkTreeView *treeview, GtkTreePath *path, 
 
     g_free(track_name);
 }
-
 
 void open_playlist_window(gchar *playlist_name, Logiciel *logiciel, gchar *path) {
 
@@ -392,10 +452,9 @@ void open_playlist(gchar *playlist_name, Logiciel *logiciel) {
         }
     }
 
-    g_print("%s\n", path);
     logiciel->playlist_name = playlist_name;
     open_playlist_window(playlist_name, logiciel, path);
-    g_free(path);
+    //g_free(path);
 
 
     fclose(file);
@@ -415,12 +474,152 @@ void on_playlist_treeview_row_activated(GtkTreeView *treeview, GtkTreePath *path
     //g_free(playlist_name);
 }
 
+double get_mp3_duration(const char *filename) {
+    char command[512];
+    snprintf(command, sizeof(command), "python3 src/duration.py \"%s\"", filename);
+    
+    FILE *pipe = popen(command, "r");
+    if (!pipe) {
+        fprintf(stderr, "Could not open pipe for output.\n");
+        return -1;
+    }
+
+    char buffer[128];
+    fgets(buffer, sizeof(buffer), pipe);
+    pclose(pipe);
+
+    return atof(buffer);
+}
+
+
+void *sortedplaythread(void *arg)
+{
+    Logiciel *logiciel = (Logiciel *)arg;
+    gchar filepath[256];
+    snprintf(filepath, sizeof(filepath), "src/tracksdata/%s", logiciel->playlist_name);
+
+    FILE *file = fopen(filepath, "r");
+    if (file == NULL) {
+        g_warning("Could not open file: %s", filepath);
+        return;
+    }
+
+    char line[256];
+    gchar *track_name = NULL;
+
+    // Read the first line and discard it
+    if (fgets(line, sizeof(line), file) == NULL) {
+        fclose(file);
+        return;
+    }
+
+    // Read the remaining lines
+    while (fgets(line, sizeof(line), file)) {
+        // Remove the newline character at the end of the line
+        line[strcspn(line, "\n")] = '\0';
+        // Get the track name before the "/"
+        track_name = strtok(line, "/");
+        size_t len = strlen(track_name);
+        
+        track_name[len - 4] = '\0';
+        if (track_name != NULL) {
+            // Call the playsong function with the appropriate arguments
+            playsong(logiciel->playlist_path, track_name, logiciel);
+            char *full_path = malloc(strlen(logiciel->playlist_path) + strlen("/") + strlen(track_name) + 1);
+            snprintf(full_path, strlen(logiciel->playlist_path) + strlen("/") + strlen(track_name) + 1, "%s/%s", logiciel->playlist_path, track_name);
+            char new_path[256];
+            snprintf(new_path, sizeof(new_path), "%s/%s.mp3",logiciel->playlist_path , track_name);
+            double duration = get_mp3_duration(new_path);
+            time_t begin;
+            time(&begin);
+            time_t current_time;
+            time(&current_time);
+            while((double)(current_time - begin)<duration)
+            {
+                time(&current_time);
+            }
+        }
+    }
+    fclose(file);
+}
+
+
+void *normalplaythread(void *arg) {
+    Logiciel *logiciel = (Logiciel *)arg;
+
+    // Ouvrir le dossier playlist_path
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir(logiciel->playlist_path)) != NULL) {
+        // Lire chaque fichier dans le dossier
+        while ((ent = readdir(dir)) != NULL) {
+            // Ignorer les fichiers spéciaux "." et ".."
+            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+                continue;
+            }
+
+            // Vérifier si le fichier est un fichier MP3
+            char *dot = strrchr(ent->d_name, '.');
+            if (dot && strcmp(dot, ".mp3") == 0) {
+                // Construire le chemin complet du fichier MP3
+                char filepath[256];
+                snprintf(filepath, sizeof(filepath), "%s/%s", logiciel->playlist_path, ent->d_name);
+
+                // Supprimer l'extension .mp3 pour le nom du morceau
+                *dot = '\0';
+                char *track_name = ent->d_name;
+
+                // Jouer la chanson
+                playsong(logiciel->playlist_path, track_name, logiciel);
+
+                // Ajouter l'extension .mp3 pour obtenir la durée du morceau
+                snprintf(filepath, sizeof(filepath), "%s/%s.mp3", logiciel->playlist_path, track_name);
+                double duration = get_mp3_duration(filepath);
+
+                // Attendre la durée du morceau
+                time_t begin, current_time;
+                time(&begin);
+                do {
+                    time(&current_time);
+                } while ((double)(current_time - begin) < duration);
+            }
+        }
+        closedir(dir);
+    } else {
+        // Erreur d'ouverture du dossier
+        perror("Could not open directory");
+    }
+
+    return NULL;
+}
+
+void sortedplay(GtkButton *button, gpointer user_data)
+{
+    Logiciel *logiciel = user_data;
+    pthread_t thread_id;
+    pthread_create(&thread_id, NULL, sortedplaythread, logiciel);
+    pthread_detach(thread_id);
+}
+
+
+void normalplay(GtkButton *button, gpointer user_data)
+{
+    Logiciel *logiciel = user_data;
+    pthread_t thread_id;
+    pthread_create(&thread_id, NULL, normalplaythread, logiciel);
+    pthread_detach(thread_id);
+}
+
+
+
 int main(int argc, char *argv[])
 {
     GtkWidget *window;
     GtkBuilder *builder;
 
     Logiciel logiciel;
+
+    logiciel.test=0;
 
     // Initialisation de GTK
     gtk_init(NULL, NULL);
@@ -466,9 +665,9 @@ int main(int argc, char *argv[])
     g_signal_connect(delete_playlist, "clicked", G_CALLBACK(delete_playlist_callback), &logiciel);
 
     GtkButton* normal_play = GTK_BUTTON(gtk_builder_get_object(logiciel.builder, "normal_play"));
-    g_signal_connect(normal_play, "clicked", G_CALLBACK(normal_play_button_clicked), &logiciel);
+    g_signal_connect(normal_play, "clicked", G_CALLBACK(normalplay), &logiciel);
 
-    g_signal_connect(logiciel.playlist_window, "delete-event", G_CALLBACK(on_window_delete_event), NULL);
+    g_signal_connect(logiciel.playlist_window, "delete-event", G_CALLBACK(on_window_delete_event), &logiciel);
 
     GtkButton* ok_name = GTK_BUTTON(gtk_builder_get_object(builder, "ok_name"));
     g_signal_connect(ok_name, "clicked", G_CALLBACK(ok_name_callback), &logiciel);
@@ -479,9 +678,12 @@ int main(int argc, char *argv[])
     GtkButton *browse_btn = GTK_BUTTON(gtk_builder_get_object(logiciel.builder, "browse_button"));
     g_signal_connect(browse_btn, "clicked", G_CALLBACK(browse_button_callback), &logiciel);
  
+    GtkButton *sortedplaybtn = GTK_BUTTON(gtk_builder_get_object(logiciel.builder, "sortedplay"));
+    g_signal_connect(sortedplaybtn, "clicked", G_CALLBACK(sortedplay), &logiciel);
+
     GtkButton *create_create_btn = GTK_BUTTON(gtk_builder_get_object(logiciel.builder, "create_create"));
     g_signal_connect(create_create_btn, "clicked", G_CALLBACK(create_playlist), &logiciel);
-    g_signal_connect(logiciel.create_panel, "delete-event", G_CALLBACK(on_window_delete_event), NULL);
+    g_signal_connect(logiciel.create_panel, "delete-event", G_CALLBACK(on_window_delete_event), &logiciel);
 
     GtkListStore *liststore = gtk_list_store_new(1, G_TYPE_STRING);
     gtk_tree_view_set_model(treeview, GTK_TREE_MODEL(liststore));
@@ -505,7 +707,7 @@ int main(int argc, char *argv[])
 
     logiciel.tracks = liststore2;
 
-    g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+    g_signal_connect(window, "destroy", G_CALLBACK(on_window_close), NULL);
     gtk_widget_show_all(window);
     gtk_main();
 
