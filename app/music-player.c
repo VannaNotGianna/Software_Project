@@ -68,6 +68,12 @@ void load_playlist(const char *path, GtkListStore *liststore) {
     }
 }
 
+void on_playlist_window_destroy(GtkWidget *widget, gpointer user_data) {
+    Logiciel *logiciel = user_data;
+    g_signal_handlers_disconnect_by_func(widget, G_CALLBACK(on_playlist_window_destroy), logiciel);
+    logiciel->playlist_window = NULL;
+}
+
 
 void create_playlist(GtkWidget *widget, gpointer user_data)
 {
@@ -211,9 +217,9 @@ void on_tracks_treeview_row_activated(GtkTreeView *treeview, GtkTreePath *path, 
 }
 
 
-void open_playlist_window(gchar *playlist_name, Logiciel *logiciel, gchar *path) {
+void open_playlist_window(gchar *playlist_name, Logiciel *logiciel) {
 
-    GtkWidget *playlist_window = logiciel->playlist_window;
+    /*GtkWidget *playlist_window = logiciel->playlist_window;
     gtk_widget_show_all(playlist_window);
 
     
@@ -231,7 +237,22 @@ void open_playlist_window(gchar *playlist_name, Logiciel *logiciel, gchar *path)
     gtk_tree_view_append_column(treeview, column);
 
     load_playlist(path, liststore);
-    g_signal_connect(treeview, "row-activated", G_CALLBACK(on_tracks_treeview_row_activated), logiciel);
+    g_signal_connect(treeview, "row-activated", G_CALLBACK(on_tracks_treeview_row_activated), logiciel);*/
+    if (logiciel->playlist_window == NULL) {
+        logiciel->playlist_window = GTK_WIDGET(gtk_builder_get_object(logiciel->builder, "playlist_window"));
+        if (!logiciel->playlist_window) {
+            g_warning("Failed to get playlist_window from builder");
+            return;
+        }
+
+        g_signal_connect(logiciel->playlist_window, "destroy", G_CALLBACK(on_playlist_window_destroy), logiciel);
+    }
+
+    gtk_widget_show_all(logiciel->playlist_window);
+
+    GtkButton *normal_play = GTK_BUTTON(gtk_builder_get_object(logiciel->builder, "normal_play"));
+    g_signal_connect(normal_play, "clicked", G_CALLBACK(normal_play_button_clicked), logiciel);
+
 }
 
 void open_playlist(gchar *playlist_name, Logiciel *logiciel) {
@@ -257,7 +278,19 @@ void open_playlist(gchar *playlist_name, Logiciel *logiciel) {
     }
 
     g_print("%s\n", path);
-    open_playlist_window(playlist_name, logiciel, path);
+    GtkTreeView *treeview = GTK_TREE_VIEW(gtk_builder_get_object(logiciel->builder, "inside_playlist"));
+
+    GtkListStore *liststore = gtk_list_store_new(1, G_TYPE_STRING);
+    gtk_tree_view_set_model(treeview, GTK_TREE_MODEL(liststore));
+
+    GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+    GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes("Playlists", renderer, "text", 0, NULL);
+    gtk_tree_view_append_column(treeview, column);
+    g_signal_connect(treeview, "row-activated", G_CALLBACK(on_tracks_treeview_row_activated), logiciel);
+
+    load_playlist(path, liststore);
+    open_playlist_window(playlist_name, logiciel);
+    //open_playlist_window(playlist_name, logiciel, path);
     g_free(path);
 
 
@@ -298,11 +331,12 @@ int main(int argc, char *argv[])
     window = GTK_WIDGET(gtk_builder_get_object(builder, "main_window"));
     logiciel.window = window;
     logiciel.create_panel = GTK_WIDGET(gtk_builder_get_object(logiciel.builder, "create_panel"));
-    logiciel.playlist_window = GTK_WIDGET(gtk_builder_get_object(logiciel.builder, "playlist_window"));
+    /*logiciel.playlist_window = GTK_WIDGET(gtk_builder_get_object(logiciel.builder, "playlist_window"));
     if (!logiciel.playlist_window) {
         g_warning("Failed to get playlist_window from builder");
         return 1;
-    }
+    }*/
+    logiciel.playlist_window = NULL;
     GtkButton* create_button = GTK_BUTTON(gtk_builder_get_object(builder, "create_playlist"));
     g_signal_connect(create_button, "clicked", G_CALLBACK(create_panel_display), &logiciel);
 

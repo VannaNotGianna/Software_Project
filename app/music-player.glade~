@@ -34,6 +34,18 @@
             <property name="position">0</property>
           </packing>
         </child>
+        <child type="center">
+          <object class="GtkLabel" id="waiting-label">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">Tracks analysis may take time</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
         <child>
           <!-- n-columns=2 n-rows=2 -->
           <object class="GtkGrid">
@@ -454,7 +466,7 @@
               </packing>
             </child>
             <child>
-              <object class="GtkButton">
+              <object class="GtkButton" id="delete_playlist">
                 <property name="label" translatable="yes">delete playlist</property>
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>
