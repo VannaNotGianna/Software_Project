@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Analytics</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="flex" style="width: 100%; background-color: darkslategrey; padding: 8px; box-sizing: border-box; flex-direction: row; justify-content: space-between; color: white;">
+        <h1 style="font-family: sans-serif; margin: 0;">Music Analytics</h1>
+        <h4 style="margin: 0;">Peak active user count: <b><span id="userCountMax" style="margin-left: 8px; font-family: monospace; color: gold; font-size: x-large;">-</span></b></h4>
+    </div>
+    <div class="pure-g" style="margin-top: 16px;">
+        <div class="pure-u-1-5 flex"><button class="pure-button pure-button-primary" onclick="generateChartData(10 * 60)">10 mins</button></div>
+        <div class="pure-u-1-5 flex"><button class="pure-button pure-button-primary" onclick="generateChartData(60 * 60)">1 hour</button></div>
+        <div class="pure-u-1-5 flex"><button class="pure-button pure-button-primary" onclick="generateChartData(24 * 60 * 60)">24 hours</button></div>
+        <div class="pure-u-1-5 flex"><button class="pure-button pure-button-primary" onclick="generateChartData(7 * 24 * 60 * 60)">7 days</button></div>
+        <div class="pure-u-1-5 flex"><button class="pure-button pure-button-primary" onclick="generateChartData(30 * 24 * 60 * 60)">30 days</button></div>
+    </div>
+    <div class="flex">
+        <div style="width: 1600px; height: 800px; margin-top: 16px; padding: 8px; border: solid 1px black; border-radius: 4px; padding: 1em;">
+            <canvas id="hitChart"></canvas>
+        </div>
+    </div>
+    <style>
+        .flex {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+    <script>
+        let chart;
+
+        const ctx = document.getElementById("hitChart");
+        const userCount = document.getElementById("userCountMax");
+        const EXPIRY_SECONDS = 300;
+
+        function getDatapoints(body, end) {
+            const points = [];
+            let userExpiries = [];
+            let i = 0;
+            let count = 0;
+            while (i < body.length) {
+                const nextExpiry = userExpiries.pop();
+                const nextSub = body[i]["timestamp"];
+
+                if (nextExpiry < nextSub) {
+                    count--;
+                    points.push({ x: nextExpiry, y: count });
+                } else {
+                    count++;
+                    points.push({ x: nextSub, y: count });
+                    i++;
+                    if (nextExpiry) userExpiries.push(nextExpiry);
+                    userExpiries.splice(0, 0, nextSub + EXPIRY_SECONDS);
+                }
+            }
+
+            while (userExpiries.length > 0) {
+                count--;
+                points.push({ x: userExpiries.pop(), y: count });
+            }
+            return points;
+        } 
+
+        async function generateChartData(period) {
+            if (chart) chart.destroy();
+
+            const fetchPeriod = period + 300; // +5 minutes
+
+            const req = await fetch(`/last?period=${fetchPeriod}`);
+            const body = await req.json();
+            const data = getDatapoints(body);
+            const peakUsers = Math.max(...data.map(k => k.y));
+            if (peakUsers < 0) peakUsers = 0;
+            userCount.innerText = peakUsers;
+
+            const ctime = Math.floor(new Date().valueOf() / 1000);
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: data,
+                        label: "Active users",
+                        borderColor: "#3e95cd",
+                        stepped: true
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            min: ctime - period,
+                            max: ctime,
+                            ticks: {
+                                callback: function(label, index, labels) {
+                                    const date = new Date(label * 1000);
+                                    return date.toLocaleTimeString();
+                                }
+                            }
+                        },
+                        y: {
+                            min: 0,
+                            suggestedMax: 10,
+                        }
+                    }
+                }
+            });
+        }
+
+        generateChartData(600);
+    </script>
+</body>
+</html>
