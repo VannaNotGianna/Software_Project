@@ -628,7 +628,7 @@ int main(int argc, char *argv[])
     builder = gtk_builder_new();
     logiciel.builder = builder;
 
-    gtk_builder_add_from_file(builder, "music-player.glade", NULL);
+    gtk_builder_add_from_file(builder, "Melodify.glade", NULL);
 
     // Obtention de la référence à la fenêtre principale
     window = GTK_WIDGET(gtk_builder_get_object(builder, "main_window"));

@@ -8,7 +8,7 @@ SRC = src/music-player.c src/play.c
 OBJ = ${SRC:.c=.o}
 DEP = ${SRC:.c=.d}
 
-music-player: ${OBJ}
+Melodify: ${OBJ}
 	${CC} ${CFLAGS} ${OBJ} -o $@ ${LDLIBS} ${LIB_PATH} ${LIBS}
 
 %.o: %.c
@@ -19,5 +19,5 @@ music-player: ${OBJ}
 .PHONY: clean
 
 clean:
-	${RM} ${OBJ} ${DEP} music-player
+	${RM} ${OBJ} ${DEP} Melodify
 
